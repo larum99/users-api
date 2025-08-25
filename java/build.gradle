@@ -2,9 +2,8 @@ plugins {
     id 'java'
 }
 
-group 'com.users'
-version '1.0-SNAPSHOT'
-
+group = 'com.users'
+version = '1.0-SNAPSHOT'
 sourceCompatibility = '17'
 
 repositories {
@@ -12,17 +11,17 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.amazonaws:aws-lambda-java-core:1.2.2'
-    implementation 'com.amazonaws:aws-lambda-java-events:3.11.0'
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    implementation 'com.amazonaws:aws-lambda-java-core:1.2.3'
+    implementation 'com.amazonaws:aws-lambda-java-events:3.13.0'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+    implementation platform('software.amazon.awssdk:bom:2.26.11')
+    implementation 'software.amazon.awssdk:dynamodb'
 }
 
 jar {
-    archiveBaseName.set("java-handlers")         
-    destinationDirectory.set(file("$projectDir/target")) 
-    manifest {
-        attributes 'Main-Class': 'com.users.handlers.UpdateUserHandler' 
-    }
+    archiveBaseName.set("java-handlers")
+    destinationDirectory.set(file("$projectDir/target"))
+
     from {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }

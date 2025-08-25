@@ -1,37 +1,47 @@
 package com.users.handlers;
 
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.dynamodb.model.DeleteItemRequest;
+import software.amazon.awssdk.services.dynamodb.model.DeleteItemResponse;
+import software.amazon.awssdk.services.dynamodb.model.DynamoDbException;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 
-import java.util.*;
+import java.util.Map;
+import java.util.HashMap;
 
 public class DeleteUserHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
-    private static List<Map<String, Object>> users = new ArrayList<>();
-
-    static {
-        users.add(Map.of("id", 1, "nombre", "Juan", "email", "juan@mail.com"));
-        users.add(Map.of("id", 2, "nombre", "Ana", "email", "ana@mail.com"));
-    }
+    private static final String TABLE_NAME = System.getenv("USERS_TABLE");
+    private static final DynamoDbClient dynamo = DynamoDbClient.create();
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent event, Context context) {
         try {
-            int id = Integer.parseInt(event.getPathParameters().get("id"));
+            String id = event.getPathParameters().get("id");
 
-            for (int i = 0; i < users.size(); i++) {
-                if ((int) users.get(i).get("id") == id) {
-                    Map<String, Object> removed = users.remove(i);
-                    return new APIGatewayProxyResponseEvent().withStatusCode(200)
-                            .withBody("Deleted user: " + removed);
-                }
-            }
-            return new APIGatewayProxyResponseEvent().withStatusCode(404).withBody("User not found");
+            Map<String, AttributeValue> key = new HashMap<>();
+            key.put("id", AttributeValue.builder().s(id).build());
 
-        } catch (Exception e) {
-            return new APIGatewayProxyResponseEvent().withStatusCode(500).withBody(e.getMessage());
+            DeleteItemRequest request = DeleteItemRequest.builder()
+                    .tableName(TABLE_NAME)
+                    .key(key)
+                    .build();
+
+            DeleteItemResponse response = dynamo.deleteItem(request);
+
+            return new APIGatewayProxyResponseEvent()
+                    .withStatusCode(200)
+                    .withBody("Deleted user with id: " + id);
+
+        } catch (DynamoDbException e) {
+            return new APIGatewayProxyResponseEvent()
+                    .withStatusCode(500)
+                    .withBody("Error deleting user: " + e.getMessage());
         }
     }
 }
