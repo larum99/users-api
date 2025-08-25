@@ -1,0 +1,42 @@
+service: users-api
+
+provider:
+  name: aws
+  region: us-east-1
+
+functions:
+  getUsers:
+    handler: nodejs/handlers/getUsers.getUsers
+    runtime: nodejs18.x
+    events:
+      - httpApi:
+          path: /users
+          method: GET
+
+  createUser:
+    handler: nodejs/handlers/createUser.createUser
+    runtime: nodejs18.x
+    events:
+      - httpApi:
+          path: /users
+          method: POST
+
+  updateUser:
+    handler: com.users.handlers.UpdateUserHandler::handleRequest
+    runtime: java17
+    package:
+      artifact: java/target/java-handlers-1.0-SNAPSHOT.jar
+    events:
+      - httpApi:
+          path: /users/{id}
+          method: PUT
+
+  deleteUser:
+    handler: com.users.handlers.DeleteUserHandler::handleRequest
+    runtime: java17
+    package:
+      artifact: java/target/java-handlers-1.0-SNAPSHOT.jar
+    events:
+      - httpApi:
+          path: /users/{id}
+          method: DELETE
