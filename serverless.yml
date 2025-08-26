@@ -3,8 +3,11 @@ service: users-api
 provider:
   name: aws
   region: us-east-1
+  runtime: nodejs18.x
   environment:
     USERS_TABLE: users
+    SQS_QUEUE_URL: https://sqs.us-east-1.amazonaws.com/370081004539/users-create-queue
+    SNS_TOPIC_ARN: arn:aws:sns:us-east-1:370081004539:user-created-notification-topic
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -16,11 +19,28 @@ provider:
         - dynamodb:Scan
       Resource:
         - arn:aws:dynamodb:us-east-1:*:table/users
+    - Effect: Allow
+      Action:
+        - sqs:SendMessage
+      Resource:
+        - arn:aws:sqs:us-east-1:370081004539:users-create-queue
+    - Effect: Allow
+      Action:
+        - sns:Publish
+      Resource:
+        - arn:aws:sns:us-east-1:370081004539:user-created-notification-topic
+    - Effect: Allow
+      Action:
+        - sqs:ReceiveMessage
+        - sqs:DeleteMessage
+        - sqs:GetQueueAttributes
+        - sqs:GetQueueUrl
+      Resource:
+        - arn:aws:sqs:us-east-1:370081004539:users-create-queue
 
 functions:
   getUsers:
     handler: nodejs/handlers/getUsers.getUsers
-    runtime: nodejs18.x
     events:
       - httpApi:
           path: /users
@@ -28,7 +48,6 @@ functions:
 
   createUser:
     handler: nodejs/handlers/createUser.createUser
-    runtime: nodejs18.x
     events:
       - httpApi:
           path: /users
@@ -54,6 +73,13 @@ functions:
           path: /users/{id}
           method: DELETE
 
+  sendEmails:
+    handler: nodejs/handlers/sendEmails.sendEmails
+    events:
+      - sqs:
+          arn: arn:aws:sqs:us-east-1:370081004539:users-create-queue
+          batchSize: 1
+
 resources:
   Resources:
     UsersTable:
@@ -67,4 +93,3 @@ resources:
         KeySchema:
           - AttributeName: id
             KeyType: HASH
-
