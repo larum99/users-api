@@ -1,0 +1,357 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "Plantilla CloudFormation para HU 7,8,9\n"
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+  LambdaRuntime:
+    Type: String
+    Default: nodejs18.x
+  JavaRuntime:
+    Type: String
+    Default: java17
+  LambdaS3Bucket:
+    Type: String
+    Description: Bucket S3 donde se subirán los zips de las Lambdas
+  LambdaS3KeyPrefix:
+    Type: String
+    Default: ''
+  LambdaMemory:
+    Type: Number
+    Default: 128
+  UsersTableName:
+    Type: String
+    Description: Nombre de la tabla DynamoDB existente (users)
+  SqsQueueUrl:
+    Type: String
+    Description: URL de la cola SQS existente (users-create-queue)
+  SqsQueueArn:
+    Type: String
+    Description: ARN de la cola SQS existente (users-create-queue)
+  SnsTopicArn:
+    Type: String
+    Description: ARN del tópico SNS existente (user-created-notification-topic)
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: ${AWS::StackName}-lambda-exec-${Stage}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      Policies:
+      - PolicyName: LambdaExecutionPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+          - Effect: Allow
+            Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+            - dynamodb:Scan
+            Resource:
+              Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${UsersTableName}
+          - Effect: Allow
+            Action:
+            - sqs:SendMessage
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+            - sqs:GetQueueUrl
+            Resource:
+              Ref: SqsQueueArn
+          - Effect: Allow
+            Action:
+            - sns:Publish
+            Resource:
+              Ref: SnsTopicArn
+  GetUsersFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: ${AWS::StackName}-getUsers-${Stage}
+      Runtime:
+        Ref: LambdaRuntime
+      Handler: handlers/getUsers.getUsers
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      Code:
+        S3Bucket: users-api-lambdas
+        S3Key: 1532fac84b8f07d78e8bc8d7d0b7bbcc
+      MemorySize:
+        Ref: LambdaMemory
+      Timeout: 10
+      Environment:
+        Variables:
+          USERS_TABLE:
+            Ref: UsersTableName
+          SQS_QUEUE_URL:
+            Ref: SqsQueueUrl
+          SNS_TOPIC_ARN:
+            Ref: SnsTopicArn
+  CreateUserFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: ${AWS::StackName}-createUser-${Stage}
+      Runtime:
+        Ref: LambdaRuntime
+      Handler: handlers/createUser.createUser
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      Code:
+        S3Bucket: users-api-lambdas
+        S3Key: 1532fac84b8f07d78e8bc8d7d0b7bbcc
+      MemorySize:
+        Ref: LambdaMemory
+      Timeout: 10
+      Environment:
+        Variables:
+          USERS_TABLE:
+            Ref: UsersTableName
+          SQS_QUEUE_URL:
+            Ref: SqsQueueUrl
+          SNS_TOPIC_ARN:
+            Ref: SnsTopicArn
+  UpdateUserFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: ${AWS::StackName}-updateUser-${Stage}
+      Runtime:
+        Ref: JavaRuntime
+      Handler: com.users.handlers.UpdateUserHandler::handleRequest
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      Code:
+        S3Bucket: users-api-lambdas
+        S3Key: 83ac765aac439148d45af0fda647b4d9
+      MemorySize:
+        Ref: LambdaMemory
+      Timeout: 15
+      Environment:
+        Variables:
+          USERS_TABLE:
+            Ref: UsersTableName
+  DeleteUserFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: ${AWS::StackName}-deleteUser-${Stage}
+      Runtime:
+        Ref: JavaRuntime
+      Handler: com.users.handlers.DeleteUserHandler::handleRequest
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      Code:
+        S3Bucket: users-api-lambdas
+        S3Key: 83ac765aac439148d45af0fda647b4d9
+      MemorySize:
+        Ref: LambdaMemory
+      Timeout: 15
+      Environment:
+        Variables:
+          USERS_TABLE:
+            Ref: UsersTableName
+  SendEmailsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: ${AWS::StackName}-sendEmails-${Stage}
+      Runtime:
+        Ref: LambdaRuntime
+      Handler: handlers/sendEmails.sendEmails
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      Code:
+        S3Bucket: users-api-lambdas
+        S3Key: 1532fac84b8f07d78e8bc8d7d0b7bbcc
+      MemorySize:
+        Ref: LambdaMemory
+      Timeout: 10
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN:
+            Ref: SnsTopicArn
+  SendEmailsEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 1
+      Enabled: true
+      EventSourceArn:
+        Ref: SqsQueueArn
+      FunctionName:
+        Fn::GetAtt:
+        - SendEmailsFunction
+        - Arn
+  ApiGatewayRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name:
+        Fn::Sub: ${AWS::StackName}-api-${Stage}-v2
+  ApiUsersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      ParentId:
+        Fn::GetAtt:
+        - ApiGatewayRestApi
+        - RootResourceId
+      PathPart: users
+  ApiUsersIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      ParentId:
+        Ref: ApiUsersResource
+      PathPart: '{id}'
+  ApiGetUsersMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      ResourceId:
+        Ref: ApiUsersResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetUsersFunction.Arn}/invocations
+  ApiCreateUserMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      ResourceId:
+        Ref: ApiUsersResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateUserFunction.Arn}/invocations
+  ApiUpdateUserMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      ResourceId:
+        Ref: ApiUsersIdResource
+      HttpMethod: PUT
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UpdateUserFunction.Arn}/invocations
+  ApiDeleteUserMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      ResourceId:
+        Ref: ApiUsersIdResource
+      HttpMethod: DELETE
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteUserFunction.Arn}/invocations
+  LambdaPermissionApiGet:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: GetUsersFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*/GET/users
+  LambdaPermissionApiCreate:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CreateUserFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*/POST/users
+  LambdaPermissionApiUpdate:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: UpdateUserFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*/PUT/users/*
+  LambdaPermissionApiDelete:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: DeleteUserFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*/DELETE/users/*
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+    - ApiGetUsersMethod
+    - ApiCreateUserMethod
+    - ApiUpdateUserMethod
+    - ApiDeleteUserMethod
+    Properties:
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      Description: Deployment for ${Stage} - ${AWS::StackName} - ${AWS::Region} -
+        ${AWS::StackId}
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName:
+        Ref: Stage
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      DeploymentId:
+        Ref: ApiGatewayDeployment
+Outputs:
+  ApiUrl:
+    Description: URL base del API Gateway
+    Value:
+      Fn::Sub: https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-ApiUrl-${Stage}
